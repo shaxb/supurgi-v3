@@ -1,0 +1,18 @@
+{
+  "primary": {
+    "login": "242648049",
+    "password": "9211810181Shax@",
+    "server": "Exness-MT5Trial",
+    "broker": "mt5",
+    "currency": "USD",
+    "initial_deposit": 0,
+    "enabled": true
+  },
+  "backtest": {
+    "id": "backtest-01",
+    "broker": "simulated",
+    "currency": "USD",
+    "initial_deposit": 100.0,
+    "enabled": true
+  }
+}

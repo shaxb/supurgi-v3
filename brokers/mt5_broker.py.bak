@@ -1,0 +1,271 @@
+"""
+MetaTrader 5 Broker Module
+
+This module implements the BaseBroker interface for MetaTrader 5.
+It handles live trade execution and market data fetching from MT5.
+"""
+
+import datetime
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple
+import MetaTrader5 as mt5
+
+from brokers.base_broker import BaseBroker
+from trading.trade import Trade, TradeStatus, TradeDirection, OrderType, CloseReason
+
+class MT5Broker(BaseBroker):
+    """
+    MetaTrader 5 broker implementation.
+    Handles live trade execution and market data fetching from MT5.
+    """
+      def __init__(self, config_manager, data_feed, logger):
+        """
+        Initialize the MT5 broker with configuration, data feed, and logger.
+        
+        Args:
+            config_manager: An instance of ConfigManager
+            data_feed: An instance of DataFeed
+            logger: An instance of Logger
+        """
+        super().__init__(config_manager, data_feed, logger)
+        self.mt5_account_info = {}
+        self.is_connected = False
+        self.timeframe_map = {
+            'M1': mt5.TIMEFRAME_M1,
+            'M5': mt5.TIMEFRAME_M5,
+            'M15': mt5.TIMEFRAME_M15,
+            'M30': mt5.TIMEFRAME_M30,
+            'H1': mt5.TIMEFRAME_H1,
+            'H4': mt5.TIMEFRAME_H4,
+            'D1': mt5.TIMEFRAME_D1,
+            'W1': mt5.TIMEFRAME_W1,
+            'MN1': mt5.TIMEFRAME_MN1
+        }
+        
+    def connect(self) -> bool:
+        """
+        Connect to the MetaTrader 5 terminal.
+        
+        Returns:
+            Boolean indicating if connection was successful
+        """
+        if self.is_connected:
+            self.logger.log_info("Already connected to MetaTrader 5")
+            return True
+            
+        self.logger.log_info("Connecting to MetaTrader 5...")
+        
+        # Get connection details from config
+        account_id = self.config_manager.get_active_account_id()
+        account_config = self.config_manager.get_account_config(account_id)
+        
+        mt5_path = account_config.get('mt5_path', '')
+        login = account_config.get('login', 0)
+        password = account_config.get('password', '')
+        server = account_config.get('server', '')
+        
+        # Initialize MT5
+        if not mt5.initialize(path=mt5_path):
+            error = mt5.last_error()
+            self.logger.log_error(f"MT5 initialization failed. Error code: {error[0]}, {error[1]}")
+            return False
+            
+        # Login to MT5 account
+        if login > 0:
+            if not mt5.login(login=login, password=password, server=server):
+                error = mt5.last_error()
+                self.logger.log_error(f"MT5 login failed. Error code: {error[0]}, {error[1]}")
+                mt5.shutdown()
+                return False
+                
+        # Get account info
+        self.mt5_account_info = mt5.account_info()._asdict()
+        
+        if not self.mt5_account_info:
+            self.logger.log_error("Failed to get MT5 account info")
+            mt5.shutdown()
+            return False
+            
+        self.is_connected = True
+        self.logger.log_info(f"Connected to MT5: Account #{self.mt5_account_info['login']} ({self.mt5_account_info['server']})")
+        
+        return True
+          def disconnect(self) -> None:
+        """Disconnect from the MetaTrader 5 terminal."""
+        if self.is_connected:
+            self.logger.log_info("Disconnecting from MetaTrader 5...")
+            mt5.shutdown()
+            self.is_connected = False
+            self.mt5_account_info = {}
+            self.logger.log_info("Disconnected from MetaTrader 5")
+            
+    def execute_trade(self, trade: Trade) -> Trade:
+        """
+        Execute a trade on MetaTrader 5.
+        
+        Args:
+            trade: A Trade object representing the trade to execute
+            
+        Returns:
+            Updated Trade object with execution details
+        """
+        if not self.is_connected:
+            if not self.connect():
+                trade.update_status(TradeStatus.REJECTED, rejection_reason="Not connected to MetaTrader 5")
+                return trade
+                
+        self.logger.log_info(f"Executing trade: {trade}")
+        
+        # Validate size
+        if trade.size is None or trade.size <= 0:
+            trade.update_status(TradeStatus.REJECTED, rejection_reason="Invalid trade size")
+            return trade
+        
+        # Prepare the request
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": trade.symbol,
+            "volume": float(trade.size),
+            "type": mt5.ORDER_TYPE_BUY if trade.direction == TradeDirection.BUY else mt5.ORDER_TYPE_SELL,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "comment": f"Supurgi-v3 {str(datetime.datetime.now())}"
+        }
+        
+        # Handle different order types
+        if trade.order_type == OrderType.MARKET:
+            # Market order - get current price
+            tick = mt5.symbol_info_tick(trade.symbol)
+            if not tick:
+                trade.update_status(TradeStatus.REJECTED, rejection_reason="Failed to get market price")
+                return trade
+                
+            request["price"] = tick.ask if trade.direction == TradeDirection.BUY else tick.bid
+            
+        elif trade.order_type == OrderType.LIMIT:
+            if trade.entry_price is None:
+                trade.update_status(TradeStatus.REJECTED, rejection_reason="Entry price required for limit order")
+                return trade
+                
+            request["action"] = mt5.TRADE_ACTION_PENDING
+            request["price"] = trade.entry_price
+            request["type"] = (mt5.ORDER_TYPE_BUY_LIMIT if trade.direction == TradeDirection.BUY 
+                               else mt5.ORDER_TYPE_SELL_LIMIT)
+                
+        elif trade.order_type == OrderType.STOP:
+            if trade.entry_price is None:
+                trade.update_status(TradeStatus.REJECTED, rejection_reason="Entry price required for stop order")
+                return trade
+                
+            request["action"] = mt5.TRADE_ACTION_PENDING
+            request["price"] = trade.entry_price
+            request["type"] = (mt5.ORDER_TYPE_BUY_STOP if trade.direction == TradeDirection.BUY 
+                               else mt5.ORDER_TYPE_SELL_STOP)
+        
+        # Add stop loss and take profit if provided
+        if trade.stop_loss is not None:
+            request["sl"] = trade.stop_loss
+            
+        if trade.take_profit is not None:
+            request["tp"] = trade.take_profit
+        
+        # Send the request
+        result = mt5.order_send(request)
+        
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            error_code = result.retcode if result else -1
+            error_desc = f"Error code: {error_code}"
+            
+            trade.update_status(TradeStatus.REJECTED, rejection_reason=f"MT5 execution failed: {error_desc}")
+            self.logger.log_error(f"MT5 trade execution failed: {error_desc}")
+            return trade
+        
+        # Update trade with execution details
+        trade.id = str(result.order)
+        trade.executed_price = result.price
+        
+        # Update trade status based on order type
+        if trade.order_type == OrderType.MARKET:
+            trade.update_status(TradeStatus.OPEN, 
+                               executed_price=result.price, 
+                               open_time=datetime.datetime.now())
+        else:
+            # For pending orders, status remains PENDING
+            pass
+            
+        self.logger.log_info(f"Trade executed: {trade}")
+        return trade
+          def get_account_info(self) -> Dict[str, Any]:
+        """
+        Get account information from MetaTrader 5.
+        
+        Returns:
+            Account information dictionary
+        """
+        if not self.is_connected:
+            if not self.connect():
+                self.logger.log_error("Failed to connect to MT5 while getting account info")
+                return {}
+                
+        # Get the latest account info
+        account_info = mt5.account_info()
+        if not account_info:
+            self.logger.log_error("Failed to get MT5 account info")
+            return {}
+            
+        # Convert to dictionary in the same format as SimulatedBroker
+        self.mt5_account_info = account_info._asdict()
+        
+        # Standardize return format to match other brokers
+        return {
+            'balance': self.mt5_account_info.get('balance', 0.0),
+            'equity': self.mt5_account_info.get('equity', 0.0),
+            'margin': self.mt5_account_info.get('margin', 0.0),
+            'free_margin': self.mt5_account_info.get('margin_free', 0.0),
+            'currency': self.mt5_account_info.get('currency', 'USD'),
+            'profit': self.mt5_account_info.get('profit', 0.0),
+            
+            # Additional MT5-specific fields (not in SimulatedBroker)
+            'leverage': self.mt5_account_info.get('leverage', 1),
+            'limit_orders': self.mt5_account_info.get('limit_orders', 0),
+            'name': self.mt5_account_info.get('name', ''),
+            'server': self.mt5_account_info.get('server', '')
+        }
+        
+    def get_open_positions(self):
+        """
+        Get all open positions from MetaTrader 5.
+        
+        Returns:
+            List of open positions as Trade objects
+        """
+        # TODO: Implement open positions fetching
+        pass
+        
+    def get_historical_data(self, symbol, timeframe, bars_count):
+        """
+        Get historical market data from MetaTrader 5.
+        
+        Args:
+            symbol: The trading symbol
+            timeframe: The timeframe (e.g., 'M15', 'H1')
+            bars_count: Number of bars to fetch
+            
+        Returns:
+            Historical market data
+        """
+        # TODO: Implement historical data fetching
+        pass
+        
+    def get_current_price(self, symbol):
+        """
+        Get the current price for a symbol from MetaTrader 5.
+        
+        Args:
+            symbol: The trading symbol
+            
+        Returns:
+            Current bid and ask prices
+        """
+        # TODO: Implement current price fetching
+        pass

@@ -1,0 +1,8 @@
+Performance Report
+=================
+
+Generated: 2025-05-18 16:54:38.641094
+
+Performance Metrics:
+-------------------
+trades: 0

@@ -1,0 +1,9 @@
+Equity Curve Report
+=================
+
+Generated: 2025-05-18 16:54:38.638230
+
+Initial Balance: 100.0
+Final Balance: 100.0
+Net Profit: 0.0
+Number of Data Points: 24864

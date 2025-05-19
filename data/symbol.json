@@ -1,0 +1,28 @@
+{
+  "EURUSDm": {
+    "strategies": [
+      {
+        "name": "MA_Crossover",
+        "timeframe": "H1",
+        "fast_ma_period": 30,
+        "slow_ma_period": 100
+      },
+      {
+        "name": "MA_Crossover",
+        "timeframe": "M15",
+        "fast_ma_period": 10,
+        "slow_ma_period": 50
+      }
+    ]
+  },
+  "USDJPY": {
+    "strategies": [
+      {
+        "name": "MA_Crossover",
+        "timeframe": "H1",
+        "fast_ma_period": 20,
+        "slow_ma_period": 80
+      }
+    ]
+  }
+}

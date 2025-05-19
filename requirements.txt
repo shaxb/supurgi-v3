@@ -1,0 +1,20 @@
+# Supurgi-v3 Trading Bot Dependencies
+
+# Core libraries
+pandas>=1.5.0
+numpy>=1.23.0
+MetaTrader5>=5.0.0
+python-dateutil>=2.8.0
+
+# Data visualization
+matplotlib>=3.5.0
+seaborn>=0.12.0
+plotly>=5.10.0
+
+# Logging and notifications
+loguru>=0.6.0
+python-telegram-bot>=13.0.0
+
+# Testing
+pytest>=7.0.0
+pytest-mock>=3.8.0

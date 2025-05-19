@@ -1,0 +1,223 @@
+"""
+Visualizer Module
+
+This module creates visual reports and plots of trading performance.
+It handles the visualization of backtest results and live trading performance.
+"""
+
+import os
+import datetime
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Any
+
+class Visualizer:
+    """
+    Creates visual reports and plots of trading performance.
+    """
+    
+    def __init__(self, config_manager, logger):
+        """
+        Initialize the visualizer with configuration and logger.
+        
+        Args:
+            config_manager: An instance of ConfigManager
+            logger: An instance of Logger
+        """
+        self.config_manager = config_manager
+        self.logger = logger
+    def plot_equity_curve(self, account_history):
+        """
+        Plot the equity curve from account history and save as HTML.
+        
+        Args:
+            account_history: Historical account balance and equity data
+            
+        Returns:
+            Path to the saved HTML plot file or None if plotting failed
+        """
+        try:
+            self.logger.log_info("Plotting equity curve as HTML...")
+            
+            # Check if we have data
+            if not account_history:
+                self.logger.log_warning("No account history data to plot")
+                return None
+            
+            # Create reports directory if it doesn't exist
+            report_dir = "reports"
+            if not os.path.exists(report_dir):
+                os.makedirs(report_dir)
+                
+            report_path = os.path.join(report_dir, f"equity_curve_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            
+            with open(report_path, "w") as f:
+                f.write("Equity Curve Report\n")
+                f.write("=================\n\n")
+                f.write(f"Generated: {datetime.datetime.now()}\n\n")
+                
+                if isinstance(account_history, list) and account_history:
+                    f.write(f"Initial Balance: {account_history[0].get('balance', 'N/A')}\n")
+                    f.write(f"Final Balance: {account_history[-1].get('balance', 'N/A')}\n")
+                    f.write(f"Net Profit: {account_history[-1].get('balance', 0) - account_history[0].get('balance', 0)}\n")
+                    f.write(f"Number of Data Points: {len(account_history)}\n")
+                else:
+                    f.write("No account history data available\n")
+            
+            self.logger.log_info(f"Equity curve report saved to {report_path}")
+            return report_path
+            
+        except Exception as e:
+            self.logger.log_error("Error plotting equity curve", e)
+            return None
+        
+    def plot_trade_history(self, trades):
+        """
+        Plot the trade history showing wins, losses, and cumulative profit.
+        
+        Args:
+            trades: List of Trade objects
+            
+        Returns:
+            Path to the saved plot file or None if plotting failed
+        """
+        try:
+            self.logger.log_info("Plotting trade history...")
+            
+            # In a real implementation, this would use matplotlib or plotly
+            # to create and save a trade history visualization
+            
+            # For the skeleton implementation, we'll just log what we would do
+            self.logger.log_info("Trade history plot would be generated here")
+            
+            # Create a simple text report as placeholder
+            report_dir = "reports"
+            if not os.path.exists(report_dir):
+                os.makedirs(report_dir)
+                
+            report_path = os.path.join(report_dir, f"trade_history_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            
+            with open(report_path, "w") as f:
+                f.write("Trade History Report\n")
+                f.write("==================\n\n")
+                f.write(f"Generated: {datetime.datetime.now()}\n\n")
+                f.write(f"Number of Trades: {len(trades)}\n\n")
+                
+                if trades:
+                    # Count wins and losses
+                    wins = sum(1 for trade in trades if trade.profit > 0)
+                    losses = sum(1 for trade in trades if trade.profit < 0)
+                    breakeven = sum(1 for trade in trades if trade.profit == 0)
+                    total_profit = sum(trade.profit for trade in trades)
+                    
+                    f.write(f"Wins: {wins} ({wins/len(trades)*100:.2f}%)\n")
+                    f.write(f"Losses: {losses} ({losses/len(trades)*100:.2f}%)\n")
+                    f.write(f"Breakeven: {breakeven} ({breakeven/len(trades)*100:.2f}%)\n")
+                    f.write(f"Total Profit: {total_profit:.2f}\n\n")
+                    
+                    f.write("Trade Details:\n")
+                    f.write("-------------\n")
+                    for i, trade in enumerate(trades, 1):
+                        f.write(f"{i}. {trade.symbol} {trade.direction} {trade.size} @ {trade.executed_price} -> Profit: {trade.profit:.2f}\n")
+                else:
+                    f.write("No trade data available\n")
+            
+            self.logger.log_info(f"Trade history report saved to {report_path}")
+            return report_path
+            
+        except Exception as e:
+            self.logger.log_error("Error plotting trade history", e)
+            return None
+        
+    def generate_performance_report(self, trades, equity_curve):
+        """
+        Generate a comprehensive performance report.
+        
+        Args:
+            trades: List of Trade objects
+            equity_curve: Historical account equity data
+            
+        Returns:
+            Path to the saved report file or None if report generation failed
+        """
+        try:
+            self.logger.log_info("Generating performance report...")
+            
+            # Create a simple text report
+            report_dir = "reports"
+            if not os.path.exists(report_dir):
+                os.makedirs(report_dir)
+                
+            report_path = os.path.join(report_dir, f"performance_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+            
+            metrics = self.calculate_performance_metrics(trades)
+            
+            with open(report_path, "w") as f:
+                f.write("Performance Report\n")
+                f.write("=================\n\n")
+                f.write(f"Generated: {datetime.datetime.now()}\n\n")
+                
+                f.write("Performance Metrics:\n")
+                f.write("-------------------\n")
+                for name, value in metrics.items():
+                    f.write(f"{name}: {value}\n")
+            
+            self.logger.log_info(f"Performance report saved to {report_path}")
+            return report_path
+            
+        except Exception as e:
+            self.logger.log_error("Error generating performance report", e)
+            return None
+    
+    def calculate_performance_metrics(self, trades) -> Dict[str, Any]:
+        """
+        Calculate performance metrics from trade history.
+        
+        Args:
+            trades: List of Trade objects
+            
+        Returns:
+            Dictionary of performance metrics
+        """
+        if not trades:
+            return {'trades': 0}
+            
+        # Basic metrics
+        num_trades = len(trades)
+        wins = sum(1 for t in trades if t.profit > 0)
+        losses = sum(1 for t in trades if t.profit < 0)
+        win_rate = (wins / num_trades) if num_trades > 0 else 0
+        
+        # Profit metrics
+        total_profit = sum(t.profit for t in trades)
+        
+        # Find winning and losing trades
+        winning_trades = [t for t in trades if t.profit > 0]
+        losing_trades = [t for t in trades if t.profit < 0]
+        
+        # Average win and loss
+        avg_win = sum(t.profit for t in winning_trades) / len(winning_trades) if winning_trades else 0
+        avg_loss = sum(t.profit for t in losing_trades) / len(losing_trades) if losing_trades else 0
+        
+        # Profit factor
+        profit_factor = (sum(t.profit for t in winning_trades) / 
+                        abs(sum(t.profit for t in losing_trades))) if losing_trades and sum(t.profit for t in losing_trades) != 0 else float('inf')
+        
+        # Maximum drawdown (simplified calculation)
+        max_drawdown = 0
+        peak = 0
+        for trade in trades:
+            peak = max(peak, trade.profit)
+            max_drawdown = min(max_drawdown, trade.profit - peak)
+        
+        return {
+            'trades': num_trades,
+            'wins': wins,
+            'losses': losses,
+            'win_rate': f"{win_rate:.2%}",
+            'total_profit': f"{total_profit:.2f}",
+            'avg_win': f"{avg_win:.2f}",
+            'avg_loss': f"{avg_loss:.2f}",
+            'profit_factor': f"{profit_factor:.2f}",
+            'max_drawdown': f"{abs(max_drawdown):.2f}"
+        }

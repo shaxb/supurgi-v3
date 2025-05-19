@@ -1,0 +1,202 @@
+"""
+Trade Module
+
+This module defines the Trade class, which is the single source of truth
+for trade/order data across all modules of the bot.
+"""
+
+import datetime
+from enum import Enum
+from typing import Optional, Dict, Any, List
+
+
+class Trade:
+    """
+    Represents a trade or order with all relevant fields.
+    
+    This is the single source of truth for trade data structure across all modules.
+    All modules must use this class to represent and pass trade/order data.
+    """
+    
+    def __init__(self, 
+                 symbol: str, 
+                 direction: Union[TradeDirection, str], 
+                 size: float, 
+                 order_type: Union[OrderType, str] = OrderType.MARKET, 
+                 entry_price: Optional[float] = None,
+                 stop_loss: Optional[float] = None,
+                 take_profit: Optional[float] = None,
+                 signal_strength: Optional[float] = None):
+        """
+        Initialize a new Trade object.
+        
+        Args:
+            symbol: The trading symbol (e.g., 'EURUSDm')
+            direction: Trade direction (TradeDirection.BUY or TradeDirection.SELL)
+            size: Trade size/volume
+            order_type: Order type (OrderType.MARKET, OrderType.LIMIT, OrderType.STOP)
+            entry_price: Entry price (required for limit and stop orders)
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            signal_strength: Strength of the signal that triggered this trade (0.0-1.0)
+        """
+        self.symbol = symbol.upper() if isinstance(symbol, str) else ""
+        
+        # Convert string direction to enum if needed
+        if isinstance(direction, str):
+            try:
+                self.direction = TradeDirection(direction.lower())
+            except ValueError:
+                raise ValueError(f"Invalid direction: {direction}. Must be 'buy' or 'sell'")
+        else:
+            self.direction = direction
+            
+        # Validate size
+        if not isinstance(size, (int, float)) or size <= 0:
+            raise ValueError(f"Size must be a positive number, got: {size}")
+        self.size = size
+        
+        # Convert string order_type to enum if needed
+        if isinstance(order_type, str):
+            try:
+                self.order_type = OrderType(order_type.lower())
+            except ValueError:
+                raise ValueError(f"Invalid order type: {order_type}. Must be 'market', 'limit', or 'stop'")
+        else:
+            self.order_type = order_type
+            
+        # Validate prices based on order type
+        if self.order_type in (OrderType.LIMIT, OrderType.STOP) and entry_price is None:
+            raise ValueError(f"Entry price is required for {self.order_type.value} orders")
+            
+        self.entry_price = entry_price
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
+        self.signal_strength = signal_strength
+        
+        # Additional fields set after execution
+        self.status = TradeStatus.PENDING
+        self.id = None
+        self.open_time = None
+        self.close_time = None
+        self.executed_price = None
+        self.commission = 0.0
+        self.swap = 0.0
+        
+        # These will be set by the broker
+        self._profit = None
+        self._risk_reward_ratio = None
+        
+    def __str__(self) -> str:
+        """String representation of the trade."""
+        return (f"Trade(id={self.id}, symbol={self.symbol}, direction={self.direction.value}, "
+                f"size={self.size}, status={self.status.value}, entry_price={self.entry_price}, "
+                f"executed_price={self.executed_price})")
+    
+    def update_status(self, new_status: Union[TradeStatus, str]) -> None:
+        """
+        Update the status of the trade with validation.
+        
+        Args:
+            new_status: New status value (TradeStatus enum or string)
+            
+        Raises:
+            ValueError: If the status transition is invalid
+        """
+        # Convert string status to enum if needed
+        if isinstance(new_status, str):
+            try:
+                new_status = TradeStatus(new_status.lower())
+            except ValueError:
+                raise ValueError(f"Invalid status: {new_status}")
+        
+        # Validate status transitions
+        valid_transitions = {
+            TradeStatus.PENDING: [TradeStatus.OPEN, TradeStatus.CANCELLED, TradeStatus.REJECTED],
+            TradeStatus.OPEN: [TradeStatus.CLOSED, TradeStatus.CANCELLED],
+            TradeStatus.CLOSED: [],  # Terminal state
+            TradeStatus.CANCELLED: [],  # Terminal state
+            TradeStatus.REJECTED: []   # Terminal state
+        }
+        
+        if new_status not in valid_transitions.get(self.status, []):
+            raise ValueError(
+                f"Invalid status transition from {self.status.value} to {new_status.value}"
+            )
+            
+        # Validate required fields for this status
+        if new_status == TradeStatus.OPEN:
+            if self.executed_price is None:
+                raise ValueError("Cannot set status to OPEN without executed_price")
+            if self.open_time is None:
+                self.open_time = datetime.datetime.now()
+                
+        elif new_status == TradeStatus.CLOSED:
+            if self.close_time is None:
+                self.close_time = datetime.datetime.now()
+                
+        self.status = new_status
+        
+    def is_pending(self) -> bool:
+        """Check if the trade is pending."""
+        return self.status == TradeStatus.PENDING
+    
+    def is_open(self) -> bool:
+        """Check if the trade is open."""
+        return self.status == TradeStatus.OPEN
+    
+    def is_closed(self) -> bool:
+        """Check if the trade is closed."""
+        return self.status == TradeStatus.CLOSED
+    
+    def is_cancelled(self) -> bool:
+        """Check if the trade is cancelled."""
+        return self.status == TradeStatus.CANCELLED
+    
+    def is_rejected(self) -> bool:
+        """Check if the trade is rejected."""
+        return self.status == TradeStatus.REJECTED
+        
+    @property
+    def profit(self) -> float:
+        """
+        Get the profit value. This should be set by the broker.
+        
+        Returns:
+            Current profit or 0.0 if not set
+        """
+        return self._profit if self._profit is not None else 0.0
+    
+    @profit.setter
+    def profit(self, value: float):
+        """
+        Set the profit value. This should only be used by brokers.
+        
+        Args:
+            value: The profit value
+        """
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"Profit must be a number, got: {type(value)}")
+        self._profit = value
+        
+    @property
+    def risk_reward_ratio(self) -> Optional[float]:
+        """
+        Get the risk/reward ratio for this trade.
+        
+        Returns:
+            Risk/reward ratio or None if not applicable
+        """
+        return self._risk_reward_ratio
+        
+    @risk_reward_ratio.setter
+    def risk_reward_ratio(self, value: float):
+        """
+        Set the risk/reward ratio. This should be calculated by the broker or risk manager.
+        
+        Args:
+            value: The risk/reward ratio
+        """
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"Risk/reward ratio must be a number, got: {type(value)}")
+        self._risk_reward_ratio = value

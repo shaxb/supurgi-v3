@@ -1,0 +1,151 @@
+# filepath: c:\Users\shaxb\OneDrive\Ishchi stol\Supurgi-v3\trading\trade.py
+"""
+Trade Module
+
+This module defines the Trade class, which is the single source of truth
+for trade/order data across all modules of the bot.
+"""
+
+import datetime
+from typing import Optional, Union, Dict, Any
+from trading.trade_enums import TradeStatus, TradeDirection, OrderType
+
+
+class Trade:
+    """
+    Represents a trade or order with all relevant fields.
+    
+    This is the single source of truth for trade data structure across all modules.
+    All modules must use this class to represent and pass trade/order data.
+    """
+    
+    def __init__(self, 
+                 symbol: str, 
+                 direction: str, 
+                 size: float, 
+                 order_type: str = TYPE_MARKET, 
+                 entry_price: Optional[float] = None,
+                 stop_loss: Optional[float] = None,
+                 take_profit: Optional[float] = None):
+        """
+        Initialize a new Trade object.
+        
+        Args:
+            symbol: The trading symbol (e.g., 'EURUSDm')
+            direction: Trade direction (buy or sell)
+            size: Trade size/volume
+            order_type: Order type (market, limit, stop)
+            entry_price: Entry price (required for limit and stop orders)
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+        """
+        self.symbol = symbol
+        self.direction = direction
+        self.size = size
+        self.order_type = order_type
+        self.entry_price = entry_price
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
+        
+        # Additional fields set after execution
+        self.status = self.STATUS_PENDING
+        self.id = None
+        self.open_time = None
+        self.close_time = None
+        self.executed_price = None
+        self.profit = 0.0
+        self.commission = 0.0
+        self.swap = 0.0
+        
+    def __str__(self) -> str:
+        """String representation of the trade."""
+        return (f"Trade(id={self.id}, symbol={self.symbol}, direction={self.direction}, "
+                f"size={self.size}, status={self.status}, entry_price={self.entry_price}, "
+                f"executed_price={self.executed_price})")
+    
+    def update_status(self, new_status: str) -> None:
+        """
+        Update the status of the trade.
+        
+        Args:
+            new_status: New status value
+        """
+        valid_statuses = [self.STATUS_PENDING, self.STATUS_OPEN, self.STATUS_CLOSED, 
+                         self.STATUS_CANCELLED, self.STATUS_REJECTED]
+        
+        if new_status not in valid_statuses:
+            raise ValueError(f"Invalid status: {new_status}")
+        
+        self.status = new_status
+        
+    def is_pending(self) -> bool:
+        """Check if the trade is pending."""
+        return self.status == self.STATUS_PENDING
+    
+    def is_open(self) -> bool:
+        """Check if the trade is open."""
+        return self.status == self.STATUS_OPEN
+    
+    def is_closed(self) -> bool:
+        """Check if the trade is closed."""
+        return self.status == self.STATUS_CLOSED
+    
+    def is_cancelled(self) -> bool:
+        """Check if the trade is cancelled."""
+        return self.status == self.STATUS_CANCELLED
+    
+    def is_rejected(self) -> bool:
+        """Check if the trade is rejected."""
+        return self.status == self.STATUS_REJECTED
+    
+    def update_profit(self, current_price: float) -> float:
+        """
+        Calculate and update profit based on current price.
+        
+        Args:
+            current_price: Current market price
+            
+        Returns:
+            Current profit
+        """
+        if not self.is_open():
+            return self.profit
+        
+        if self.executed_price is None:
+            return 0
+            
+        pip_diff = 0
+        if self.direction == self.DIRECTION_BUY:
+            pip_diff = current_price - self.executed_price
+        else:  # SELL
+            pip_diff = self.executed_price - current_price
+            
+        # This is a simplified calculation. In a real system, you would use
+        # symbol metadata to calculate actual profit based on pip value, lot size, etc.
+        self.profit = pip_diff * self.size
+        return self.profit
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the trade to a dictionary.
+        
+        Returns:
+            Dict representation of the trade
+        """
+        return {
+            'id': self.id,
+            'symbol': self.symbol,
+            'direction': self.direction,
+            'size': self.size,
+            'order_type': self.order_type,
+            'entry_price': self.entry_price,
+            'stop_loss': self.stop_loss,
+            'take_profit': self.take_profit,
+            'status': self.status,
+            'open_time': self.open_time,
+            'close_time': self.close_time,
+            'executed_price': self.executed_price,
+            'profit': self.profit,
+            'commission': self.commission,
+            'swap': self.swap
+        }

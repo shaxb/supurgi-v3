@@ -1,0 +1,26 @@
+{
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/supurgi.log",
+    "console_output": true,
+    "max_file_size_mb": 10,
+    "backup_count": 5
+  },
+  "notifications": {
+    "telegram": {
+      "enabled": false,
+      "bot_token": "",
+      "chat_id": ""
+    }
+  },
+  "backtest": {
+    "start_date": "2023-01-01",
+    "end_date": "2023-12-31",
+    "cache_data": true,
+    "data_directory": "data/historical"
+  },
+  "execution": {
+    "mode": "backtest",
+    "account_id": "backtest-01"
+  }
+}

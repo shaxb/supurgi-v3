@@ -1,0 +1,142 @@
+"""
+Logger module for Supurgi-v3 trading bot.
+
+This module provides logging functionalities for the entire bot, including:
+- Trade execution logs
+- Strategy decision logs
+- Error and warning logs
+- Performance logs
+
+The logger integrates with the config_manager to respect log levels and
+destinations specified in controller.json.
+"""
+
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+
+class Logger:
+    """Main logger class for Supurgi-v3."""
+    
+    def __init__(self, config_manager):
+        """
+        Initialize the logger.
+        
+        Args:
+            config_manager: ConfigManager instance to get logging configuration.
+        """
+        self.config_manager = config_manager
+        self.logger = self._setup_logger()    def _setup_logger(self) -> logging.Logger:
+        """
+        Set up and configure the logger based on config settings.
+        
+        Returns:
+            logging.Logger: Configured logger instance.
+        """
+        logger = logging.getLogger("supurgi")
+        
+        # Get logging configuration from controller.json
+        log_config = self.config_manager.controller_config.get('logging', {})
+        log_level_name = log_config.get('level', 'INFO')
+        log_file_path = log_config.get('file_path', 'logs/supurgi.log')
+        console_output = log_config.get('console_output', True)
+        max_file_size_mb = log_config.get('max_file_size_mb', 10)
+        backup_count = log_config.get('backup_count', 5)
+        
+        # Convert string log level to logging constant
+        log_level = getattr(logging, log_level_name, logging.INFO)
+        logger.setLevel(log_level)
+          # Create formatter with file and line number info
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+        )
+        
+        # Add file handler if log file path is specified
+        if log_file_path:
+            try:
+                # Ensure the log directory exists
+                log_dir = os.path.dirname(log_file_path)
+                if log_dir and not os.path.exists(log_dir):
+                    os.makedirs(log_dir)
+                    
+                file_handler = RotatingFileHandler(
+                    log_file_path,
+                    maxBytes=max_file_size_mb * 1024 * 1024,
+                    backupCount=backup_count
+                )
+                file_handler.setFormatter(formatter)
+                logger.addHandler(file_handler)
+            except Exception as e:
+                print(f"Error setting up file logging: {str(e)}")
+        
+        # Add console handler if console output is enabled
+        if console_output:
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+        
+        return logger    def log_trade(self, trade, message: str) -> None:
+        """
+        Log trade-related information.
+        
+        Args:
+            trade: Trade object containing trade details.
+            message: Additional message to log with the trade.
+        """
+        trade_info = f"[TRADE] {trade.symbol} {trade.direction} {trade.size} @ {trade.executed_price} - {message}"
+        self.logger.info(trade_info, stacklevel=2)
+    
+    def log_strategy(self, strategy_name: str, symbol: str, timeframe: str, message: str) -> None:
+        """
+        Log strategy decisions and signals.
+        
+        Args:
+            strategy_name: Name of the strategy.
+            symbol: Symbol being traded.
+            timeframe: Timeframe of the strategy.
+            message: Strategy log message.
+        """
+        strategy_info = f"[STRATEGY] {strategy_name} {symbol} {timeframe} - {message}"
+        self.logger.info(strategy_info, stacklevel=2)
+      def log_error(self, message: str, exception: Optional[Exception] = None) -> None:
+        """
+        Log error messages.
+        
+        Args:
+            message: Error message.
+            exception: Optional exception object.
+        """
+        if exception:
+            error_message = f"{message}: {str(exception)}"
+            # Using extra with custom _caller_file and _caller_line for better source tracking
+            self.logger.exception(error_message, extra={'_caller_file': True})
+        else:
+            self.logger.error(message, extra={'_caller_file': True})
+      def log_warning(self, message: str) -> None:
+        """
+        Log warning messages.
+        
+        Args:
+            message: Warning message.
+        """
+        self.logger.warning(message, stacklevel=2)  # stacklevel=2 tells logging to use caller's info
+    
+    def log_info(self, message: str) -> None:
+        """
+        Log informational messages.
+        
+        Args:
+            message: Info message.
+        """
+        self.logger.info(message, stacklevel=2)  # stacklevel=2 tells logging to use caller's info
+    
+    def log_debug(self, message: str) -> None:
+        """
+        Log debug messages.
+        
+        Args:
+            message: Debug message.
+        """
+        self.logger.debug(message, stacklevel=2)  # stacklevel=2 tells logging to use caller's info
